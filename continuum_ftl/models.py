@@ -194,6 +194,8 @@ class DeploymentConfig:
     feed_opacity: float
     plot_padding_m: float
     geometry_tolerance_m: float
+    reference_path_color: str = "#7b3294"
+    exposed_line_width_factor: float = 2.2
 
 
 @dataclass(frozen=True)
@@ -262,6 +264,74 @@ class DeploymentState:
     boundary_tangent_angles_rad: FloatArray
     forward: ForwardResult
     consistency_warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PlanarCurveGeometry:
+    """Continuous physical PCC curve in world YZ, proximal to distal.
+
+    n section lengths (m), n+1 exact junction positions (m) and tangent angles
+    (rad). A straight passive section is represented by equal endpoint angles.
+    Material arc length starts at the physical proximal end, independently of d.
+    """
+
+    section_names: tuple[str, ...]
+    section_lengths_m: FloatArray
+    junction_positions_m: FloatArray
+    junction_angles_rad: FloatArray
+
+
+class ExposureStatus(StrEnum):
+    NOT_ENTERED = "not_entered"
+    EXPOSED = "exposed"
+    AMBIGUOUS = "ambiguous_entry_geometry"
+
+
+@dataclass(frozen=True)
+class EnvironmentExposure:
+    """One continuous entry-to-tip domain, NOT a collision or FTL result.
+
+    points (M,2) and arc vectors (M,) are empty before entry or on ambiguity.
+    arc_lengths_m starts at entry; material_arc_lengths_m starts at the physical
+    proximal end. Internal junction samples belong to the distal section.
+    Unknown interval/lengths on ambiguity are None, never an invented zero.
+    tip_entered only describes tip position relative to the entry plane.
+    """
+
+    status: ExposureStatus
+    diagnostic: str
+    tip_entered: bool
+    entry_position_m: FloatArray | None
+    entry_material_arc_m: float | None
+    centerline_m: FloatArray
+    arc_lengths_m: FloatArray
+    material_arc_lengths_m: FloatArray
+    exposed_length_m: float | None
+    section_names: tuple[str, ...]
+    section_exposed_lengths_m: FloatArray | None
+    section_indices: NDArray[np.int64]
+    tip_position_m: FloatArray
+    intersection_material_arcs_m: FloatArray
+
+
+@dataclass(frozen=True)
+class ReferencePath:
+    """Fixed desired tip curve; s=0 at environment entry, s=end at IK tip (m).
+
+    The exact PCC geometry supports continuous arc-length interpolation.
+    It is independent of deployment and actual exposed-body arc coordinates.
+    section_boundary_arcs_m retains every junction inside the reference domain.
+    The IK tip is retained exactly, rather than snapped to a target with residual.
+    """
+
+    geometry: PlanarCurveGeometry
+    entry_material_arc_m: float
+    points_m: FloatArray
+    arc_lengths_m: FloatArray
+    section_indices: NDArray[np.int64]
+    section_boundary_arcs_m: FloatArray
+    target_position_m: FloatArray
+    tip_error_m: float
 
 
 class IKStatus(StrEnum):

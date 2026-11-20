@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .models import CircleObstacle, DeploymentState, ProjectConfig
+from .models import (
+    CircleObstacle,
+    DeploymentState,
+    EnvironmentExposure,
+    ExposureStatus,
+    ProjectConfig,
+    ReferencePath,
+)
 
 if TYPE_CHECKING:
     from matplotlib.animation import FuncAnimation
@@ -16,22 +23,47 @@ if TYPE_CHECKING:
 class DeploymentViewer:
     """Visible manual deployment with Replay/Pause, exact precomputed state frames."""
 
-    def __init__(self, config: ProjectConfig, states: tuple[DeploymentState, ...]) -> None:
+    def __init__(
+        self,
+        config: ProjectConfig,
+        states: tuple[DeploymentState, ...],
+        *,
+        reference_path: ReferencePath | None = None,
+        exposures: tuple[EnvironmentExposure, ...] | None = None,
+    ) -> None:
         import matplotlib.pyplot as plt
         from matplotlib.patches import Circle, Rectangle
         from matplotlib.widgets import Button
 
         if config.deployment is None or not states:
             raise ValueError("Deployment settings and nonempty state sequence required")
+        if (reference_path is None) != (exposures is None):
+            raise ValueError(
+                "Provide both a reference path and actual exposure sequence, or neither"
+            )
+        if exposures is not None and len(exposures) != len(states):
+            raise ValueError("Exactly one exposure result per actual deployment state required")
         self.config, self.states = config, states
+        self.reference_path, self.exposures = reference_path, exposures
         self.settings = config.deployment
         self.animation = None
         self.paused = False
         self.current_index = 0
         self.fig = plt.figure(figsize=tuple(config.visualization.figure_size_inches))
         self.axes = self.fig.add_axes([0.10, 0.18, 0.83, 0.62])
-        self.fig.suptitle("Stage 2A: manual feed-in / release demo — NOT FTL")
-        self.status = self.fig.text(0.10, 0.94, "", va="top", family="monospace")
+        self.fig.suptitle(
+            "Stage 2B: deployment / exposure — NOT FTL"
+            if exposures is not None
+            else "Stage 2A: manual feed-in / release demo — NOT FTL"
+        )
+        self.status = self.fig.text(
+            0.10,
+            0.94,
+            "",
+            va="top",
+            family="monospace",
+            fontsize=9 if exposures is not None else 10,
+        )
         self.warning = self.fig.text(0.10, 0.13, "", color="#c62828", fontsize=8)
         self.fig.text(
             0.10,
@@ -56,15 +88,29 @@ class DeploymentViewer:
             *config.target.position_m,
             marker="*",
             color=config.visualization.target_color,
-            label="Stage 1 target (not tracked)",
+            label="Stage 1 target\n(not tracked)"
+            if exposures is not None
+            else "Stage 1 target (not tracked)",
         )
         settings = self.settings
+        self.reference_line = None
+        if reference_path is not None:
+            (self.reference_line,) = self.axes.plot(
+                *reference_path.points_m.T,
+                "--",
+                color=settings.reference_path_color,
+                linewidth=config.visualization.centerline_width,
+                label="Fixed reference tip path\n(not followed)",
+                zorder=2,
+            )
         self.feed_block = Rectangle(
             settings.feed_block_center_m - settings.feed_block_size_m / 2,
             *settings.feed_block_size_m,
             facecolor=settings.feed_color,
             alpha=settings.feed_opacity,
-            label="Ideal feed block (visual only)",
+            label="Feed block (visual only)"
+            if exposures is not None
+            else "Ideal feed block (visual only)",
         )
         self.axes.add_patch(self.feed_block)
         self.axes.axhline(
@@ -86,11 +132,30 @@ class DeploymentViewer:
             )[0]
             for name, color in zip(states[0].section_names, settings.section_colors, strict=True)
         ]
-        (self.boundaries,) = self.axes.plot([], [], "o", color="#333333", markersize=4)
-        (self.tip,) = self.axes.plot([], [], "o", color="#c62828", markersize=6, label="Tip")
+        self.exposed_lines = []
+        if exposures is not None:
+            self.exposed_lines = [
+                self.axes.plot(
+                    [],
+                    [],
+                    color=color,
+                    linewidth=(config.visualization.centerline_width + 1)
+                    * settings.exposed_line_width_factor,
+                    label="Exposed body\n(thick, section colors)" if i == 0 else None,
+                    solid_capstyle="round",
+                    zorder=4,
+                )[0]
+                for i, color in enumerate(settings.section_colors)
+            ]
+        (self.boundaries,) = self.axes.plot([], [], "o", color="#333333", markersize=4, zorder=5)
+        (self.tip,) = self.axes.plot(
+            [], [], "o", color="#c62828", markersize=6, label="Tip", zorder=6
+        )
         active_points = np.vstack(
             [curve.points_m for state in states for curve in state.forward.section_curves[1:]]
         )
+        if reference_path is not None:
+            active_points = np.vstack((active_points, reference_path.points_m))
         bounds = config.environment.workspace_bounds_m
         lower_z = min(bounds[1, 0], active_points[:, 1].min() - settings.visible_passive_length_m)
         upper_z = max(bounds[1, 1], active_points[:, 1].max())
@@ -106,7 +171,15 @@ class DeploymentViewer:
         )
         self.axes.set_aspect("equal", adjustable="box")
         self.axes.grid(True, alpha=0.3)
-        self.axes.legend(loc="upper left", fontsize=7)
+        if exposures is not None:
+            self.fig.legend(
+                *self.axes.get_legend_handles_labels(),
+                loc="upper left",
+                bbox_to_anchor=(0.005, 0.80),
+                fontsize=7,
+            )
+        else:
+            self.axes.legend(loc="upper left", fontsize=7)
         self.replay_button = Button(self.fig.add_axes([0.25, 0.055, 0.2, 0.05]), "Replay")
         self.pause_button = Button(self.fig.add_axes([0.55, 0.055, 0.2, 0.05]), "Pause")
         self.replay_button.on_clicked(self.replay)
@@ -134,14 +207,51 @@ class DeploymentViewer:
                 )
             )
         )
-        self.status.set_text(
+        text = (
             f"d = {state.distance_m * 1000:6.1f} mm | frame {index + 1}/{len(self.states)}\n"
             f"{flags}\nTip YZ = ({state.forward.tip_position_m[0]:+.4f}, "
             f"{state.forward.tip_position_m[1]:+.4f}) m | physical length = "
             f"{state.section_lengths_m.sum():.2f} m"
         )
-        self.warning.set_text("\n".join(state.consistency_warnings))
-        return (*self.lines, self.boundaries, self.tip, self.status, self.warning)
+        warnings = list(state.consistency_warnings)
+        if self.exposures is not None:
+            exposed = self.exposures[index]
+            boundaries = np.r_[0.0, np.cumsum(state.section_lengths_m)]
+            for i, line in enumerate(self.exposed_lines):
+                # Include both ends of each physical section for connected drawing,
+                # even though internal sample IDs use distal ownership.
+                mask = (exposed.material_arc_lengths_m >= boundaries[i]) & (
+                    exposed.material_arc_lengths_m <= boundaries[i + 1]
+                )
+                points = exposed.centerline_m[mask]
+                line.set_data(points[:, 0], points[:, 1])
+            if exposed.exposed_length_m is None:
+                text += "\nExposure: AMBIGUOUS (no interval inferred)"
+                warnings.append(exposed.diagnostic)
+            else:
+                lengths = " | ".join(
+                    f"{name}={length * 1000:.1f}"
+                    for name, length in zip(
+                        exposed.section_names, exposed.section_exposed_lengths_m, strict=True
+                    )
+                )
+                text += (
+                    f"\nExposed length = {exposed.exposed_length_m * 1000:.1f} mm"
+                    f" | tip entered: {exposed.tip_entered}\nExposed mm: {lengths}"
+                )
+            self.status.set_color(
+                "#c62828" if exposed.status == ExposureStatus.AMBIGUOUS else "#222222"
+            )
+        self.status.set_text(text)
+        self.warning.set_text("\n".join(warnings))
+        return (
+            *self.lines,
+            *self.exposed_lines,
+            self.boundaries,
+            self.tip,
+            self.status,
+            self.warning,
+        )
 
     def animate(self) -> FuncAnimation:
         """Create/retain a finite visible replay, using stored states only."""

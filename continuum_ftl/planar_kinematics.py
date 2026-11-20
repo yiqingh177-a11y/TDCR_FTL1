@@ -41,6 +41,20 @@ def _local_points(length_m: float, theta: float, arcs_m: FloatArray) -> FloatArr
     )
 
 
+def section_points_2d(length_m: float, bend_rad: float, arc_lengths_m: FloatArray) -> FloatArray:
+    """Exact local PCC points (M,2) at physical arc coordinates (M,), in metres.
+
+    Origin is section start, neutral tangent +Z; positive bend is toward +Y.
+    Reuses FK's stable signed formula, including straight/near-straight cases.
+    """
+    arcs = np.asarray(arc_lengths_m, dtype=float)
+    if not np.isfinite(length_m) or length_m <= 0 or not np.isfinite(bend_rad):
+        raise ValueError("Positive finite section length and finite bend required")
+    if arcs.ndim != 1 or not np.isfinite(arcs).all() or np.any((arcs < 0) | (arcs > length_m)):
+        raise ValueError("Section arc coordinates must be a finite vector in [0,length]")
+    return _local_points(length_m, bend_rad, arcs)
+
+
 def forward_kinematics_2d(
     robot: PlanarRobotConfig, configuration: FloatArray, max_arc_spacing_m: float
 ) -> ForwardResult:

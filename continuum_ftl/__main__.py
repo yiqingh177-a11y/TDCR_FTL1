@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .config import load_config
+from .config import geometry_context, load_config
 from .evaluation import evaluate_target, result_report
 
 
@@ -33,6 +33,7 @@ def main() -> None:
     else:
         result = evaluate_target(config)
         report_data = result_report(result)
+    report_data["geometry_context"] = geometry_context(config)
     report = json.dumps(report_data, indent=2, allow_nan=False)
     print(report)
     if args.output:

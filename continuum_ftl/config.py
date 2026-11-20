@@ -2,6 +2,7 @@
 
 import json
 import re
+from dataclasses import asdict
 from math import fsum
 from pathlib import Path
 
@@ -59,6 +60,21 @@ def load_config(path: str | Path) -> ProjectConfig:
         return _parse_config(data)
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise ValueError(f"Invalid configuration {path}: {exc}") from exc
+
+
+def geometry_context(config: ProjectConfig) -> dict:
+    """JSON-compatible Stage 1 geometry provenance for later result reuse.
+
+    Includes target, bounds/margin, obstacles and collision sampling. Solver,
+    initial guess, display and deployment settings do not alter the final shape.
+    """
+    data = {
+        name: asdict(getattr(config, name))
+        for name in ("robot", "target", "environment", "sampling")
+    }
+    data["robot"].pop("initial_configuration_rad")
+    data["dimension"] = config.dimension
+    return json.loads(json.dumps(data, default=lambda array: array.tolist(), allow_nan=False))
 
 
 def _parse_config(data: dict) -> ProjectConfig:
@@ -135,6 +151,7 @@ def _parse_deployment(
         "distance_step_m",
         "plot_padding_m",
         "geometry_tolerance_m",
+        "exposed_line_width_factor",
     ):
         _positive(getattr(settings, name), f"deployment.{name}")
     _positive(settings.visible_passive_length_m, "visible_passive_length_m", allow_zero=True)
@@ -167,7 +184,7 @@ def _parse_deployment(
         settings.passive_radius_m, *(s.radius_m for s in robot.sections)
     ):
         raise ValueError("Feed block is narrower than the robot's diameter")
-    colors = (*settings.section_colors, settings.feed_color)
+    colors = (*settings.section_colors, settings.feed_color, settings.reference_path_color)
     if len(settings.section_colors) != robot.section_count + 1 or any(
         not isinstance(c, str) or re.fullmatch(r"#[0-9a-fA-F]{6}", c) is None for c in colors
     ):
