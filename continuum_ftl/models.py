@@ -170,6 +170,33 @@ class PlanarVisualizationConfig:
 
 
 @dataclass(frozen=True)
+class DeploymentConfig:
+    """Stage 2A fixed +Z feed settings; lengths m and signed angles rad.
+
+    Vectors follow active section order. The bending schedule is manual, not FTL.
+    """
+
+    passive_length_m: float
+    passive_radius_m: float
+    active_section_names: tuple[str, ...]
+    feed_exit_m: FloatArray
+    environment_entry_z_m: float
+    feed_block_center_m: FloatArray
+    feed_block_size_m: FloatArray
+    end_distance_m: float
+    distance_step_m: float
+    bend_targets_rad: FloatArray
+    bend_ramp_distances_m: FloatArray
+    frame_interval_ms: int
+    visible_passive_length_m: float
+    section_colors: tuple[str, ...]
+    feed_color: str
+    feed_opacity: float
+    plot_padding_m: float
+    geometry_tolerance_m: float
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     description: str
     robot: RobotConfig | PlanarRobotConfig
@@ -179,6 +206,7 @@ class ProjectConfig:
     sampling: SamplingConfig
     visualization: VisualizationConfig | PlanarVisualizationConfig
     ik_search: IKSearchConfig | None = None
+    deployment: DeploymentConfig | None = None
 
     @property
     def dimension(self) -> int:
@@ -211,6 +239,29 @@ class ForwardResult:
     centerline_m: FloatArray
     arc_lengths_m: FloatArray
     section_curves: tuple[SectionCurve, ...]
+
+
+@dataclass(frozen=True)
+class DeploymentState:
+    """Complete physical chain at d (m). No passive bending DOF is introduced.
+
+    Bend/release vectors have n active entries. forward includes full passive
+    geometry, even if the viewer clips it. Boundary tangent angles (n+2,) rad.
+    Samples are piecewise uniform in arc length and include the passive join.
+    """
+
+    distance_m: float
+    proximal_position_m: FloatArray
+    active_base_position_m: FloatArray
+    requested_bends_rad: FloatArray
+    applied_bends_rad: FloatArray
+    released: NDArray[np.bool_]
+    release_thresholds_m: FloatArray
+    section_names: tuple[str, ...]
+    section_lengths_m: FloatArray
+    boundary_tangent_angles_rad: FloatArray
+    forward: ForwardResult
+    consistency_warnings: tuple[str, ...]
 
 
 class IKStatus(StrEnum):

@@ -2,6 +2,7 @@
 
 import json
 import re
+from math import fsum
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ import numpy as np
 from .models import (
     BoxObstacle,
     CircleObstacle,
+    DeploymentConfig,
     EnvironmentConfig,
     FloatArray,
     IKSearchConfig,
@@ -63,6 +65,7 @@ def _parse_config(data: dict) -> ProjectConfig:
     data = dict(data)
     dimension = data.pop("dimension", 3)
     raw_search = data.pop("ik_search", None)
+    raw_deployment = data.pop("deployment", None)
     if type(dimension) is not int or dimension not in (2, 3):
         raise ValueError("dimension must be 2 or 3; omitted means legacy 3D")
     if set(data) != {
@@ -94,6 +97,9 @@ def _parse_config(data: dict) -> ProjectConfig:
     _positive(sampling.max_arc_spacing_m, "max_arc_spacing_m")
     visualization = _parse_visualization(data["visualization"], dimension)
     search = _parse_search(raw_search, robot, dimension) if raw_search is not None else None
+    deployment = (
+        _parse_deployment(raw_deployment, robot, dimension) if raw_deployment is not None else None
+    )
     if not isinstance(data["description"], str):
         raise ValueError("description must be a string")
     return ProjectConfig(
@@ -105,7 +111,70 @@ def _parse_config(data: dict) -> ProjectConfig:
         sampling,
         visualization,
         search,
+        deployment,
     )
+
+
+def _parse_deployment(
+    data: dict, robot: RobotConfig | PlanarRobotConfig, dimension: int
+) -> DeploymentConfig:
+    if dimension != 2:
+        raise ValueError("Stage 2A deployment supports 2D only")
+    data = dict(data)
+    for name in ("feed_exit_m", "feed_block_center_m", "feed_block_size_m"):
+        data[name] = _array(data[name], (2,), f"deployment.{name}")
+    for name in ("bend_targets_rad", "bend_ramp_distances_m"):
+        data[name] = _array(data[name], (robot.section_count,), f"deployment.{name}")
+    data["active_section_names"] = tuple(data["active_section_names"])
+    data["section_colors"] = tuple(data["section_colors"])
+    settings = DeploymentConfig(**data)
+    for name in (
+        "passive_length_m",
+        "passive_radius_m",
+        "end_distance_m",
+        "distance_step_m",
+        "plot_padding_m",
+        "geometry_tolerance_m",
+    ):
+        _positive(getattr(settings, name), f"deployment.{name}")
+    _positive(settings.visible_passive_length_m, "visible_passive_length_m", allow_zero=True)
+    _integer(settings.frame_interval_ms, "deployment.frame_interval_ms")
+    names = settings.active_section_names
+    if (
+        len(names) != robot.section_count
+        or any(not isinstance(n, str) or not n.strip() or n == "Passive" for n in names)
+        or len(set(names)) != len(names)
+    ):
+        raise ValueError("Unique deployment names must match active section count")
+    if np.any(settings.feed_block_size_m <= 0) or np.any(settings.bend_ramp_distances_m <= 0):
+        raise ValueError("Positive feed block sizes and bending ramp distances required")
+    if np.any(np.abs(settings.bend_targets_rad) > [s.max_bend_rad for s in robot.sections]):
+        raise ValueError("Manual bend targets exceed active section limits")
+    total = fsum([settings.passive_length_m, *(s.length_m for s in robot.sections)])
+    if settings.end_distance_m > total:
+        raise ValueError("Deployment end distance exceeds complete physical length")
+    if (
+        not np.isfinite(settings.environment_entry_z_m)
+        or settings.environment_entry_z_m <= settings.feed_exit_m[1]
+    ):
+        raise ValueError("Environment entry must be above the fixed feed exit")
+    top_center = settings.feed_block_center_m + [0, settings.feed_block_size_m[1] / 2]
+    if not np.allclose(
+        top_center, settings.feed_exit_m, rtol=0, atol=settings.geometry_tolerance_m
+    ):
+        raise ValueError("Feed exit must coincide with feed block upper centre")
+    if settings.feed_block_size_m[0] / 2 < max(
+        settings.passive_radius_m, *(s.radius_m for s in robot.sections)
+    ):
+        raise ValueError("Feed block is narrower than the robot's diameter")
+    colors = (*settings.section_colors, settings.feed_color)
+    if len(settings.section_colors) != robot.section_count + 1 or any(
+        not isinstance(c, str) or re.fullmatch(r"#[0-9a-fA-F]{6}", c) is None for c in colors
+    ):
+        raise ValueError("One #RRGGBB color per physical section and a feed color required")
+    if not np.isfinite(settings.feed_opacity) or not 0 <= settings.feed_opacity <= 1:
+        raise ValueError("Feed opacity must be in [0,1]")
+    return settings
 
 
 def _parse_search(

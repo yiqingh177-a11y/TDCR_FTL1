@@ -68,7 +68,7 @@ class IKSearchTests(unittest.TestCase):
         self.assertEqual(result.history[0].seed_source, "reference")
         assert_allclose(result.history[0].seed_configuration_rad, self.reference)
         self.assertEqual(checker.call_count, 1)
-        self.assertGreater(result.minimum_clearance, 0.005)
+        self.assertGreater(result.minimum_clearance, self.planar.environment.safety_margin_m)
         # A different user reference must be used literally, including colliding ones.
         result = find_collision_free_ik(
             self.planar, np.zeros(3), settings=IKSearchConfig(max_attempts=1)

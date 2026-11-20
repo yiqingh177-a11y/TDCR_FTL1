@@ -1,7 +1,24 @@
 # TDCR_FTL1 / continuum_ftl
 
 独立的 2D/3D PCC 运动学、位置 IK 与最终构型静态碰撞检查，支持多起点无碰撞 IK 搜索。
-目前仍为 Stage 1，不包含 FTL、RRT、插入或运动路径碰撞验证。
+Stage 1 功能保留；新增 Stage 2A 手动送入与释放几何演示。
+不包含 FTL 优化、RRT 或运动路径碰撞验证。
+
+## Stage 2A：可视化送入演示
+
+```cmd
+cd /d D:\Code\rr\TDCR_FTL1
+.venv\Scripts\python.exe -m continuum_ftl.deployment_demo
+```
+
+显示固定出料口、环境入口、灰色被动段及彩色 C/B/A 段。
+可点击 Replay 重播、Pause 暂停。三段全部从零角度开始，
+A/B/C 分别在送入 40/100/180 mm 后解锁并按手动曲线平滑弯曲。
+完整物理长度为 0.38 m；这不是 FTL，也不检查碰撞或追踪 target。
+配置仍在 `configs/robot_2d.json`，新增参数位于 `deployment`。
+详情与导出命令见 [README_STAGE2A.md](README_STAGE2A.md)。
+
+## Stage 1：原有 IK 与静态碰撞
 
 在项目根目录运行（Windows CMD）：
 
