@@ -1,0 +1,52 @@
+{
+  "dimension": 2,
+  "description": "User-specified stepped YZ corridor with L1-L7, R1-R7 and T1. Example robot dimensions, not verified COBRA dimensions.",
+  "robot": {
+    "sections": [
+      {"length_m": 0.08, "radius_m": 0.004, "max_bend_rad": 1.5707963267948966},
+      {"length_m": 0.06, "radius_m": 0.004, "max_bend_rad": 1.5707963267948966},
+      {"length_m": 0.04, "radius_m": 0.004, "max_bend_rad": 1.5707963267948966}
+    ],
+    "base_position_m": [0, 0],
+    "base_angle_rad": 0,
+    "initial_configuration_rad": [0, 0, 0]
+  },
+  "target": {"position_m": [0.1409612134, 0.075], "tolerance_m": 0.001},
+  "environment": {
+    "workspace_bounds_m": [[-0.15, 0.2], [-0.2, 0.2]],
+    "safety_margin_m": 0.001,
+    "obstacles": [
+      {"kind": "rectangle", "name": "L1", "min_m": [-0.04, 0], "max_m": [-0.01, 0.04]},
+      {"kind": "rectangle", "name": "L2", "min_m": [-0.04, 0.04], "max_m": [-0.01, 0.05]},
+      {"kind": "rectangle", "name": "L3", "min_m": [-0.04, 0.05], "max_m": [-0.01, 0.06]},
+      {"kind": "rectangle", "name": "L4", "min_m": [-0.04, 0.06], "max_m": [-0.01, 0.07]},
+      {"kind": "rectangle", "name": "L5", "min_m": [-0.04, 0.07], "max_m": [0.06, 0.08]},
+      {"kind": "rectangle", "name": "L6", "min_m": [-0.04, 0.08], "max_m": [0.06, 0.09]},
+      {"kind": "rectangle", "name": "L7", "min_m": [-0.04, 0.09], "max_m": [0.06, 0.10]},
+      {"kind": "rectangle", "name": "R1", "min_m": [0.02, 0], "max_m": [0.12, 0.01]},
+      {"kind": "rectangle", "name": "R2", "min_m": [0.02, 0.01], "max_m": [0.12, 0.02]},
+      {"kind": "rectangle", "name": "R3", "min_m": [0.03, 0.02], "max_m": [0.12, 0.03]},
+      {"kind": "rectangle", "name": "R4", "min_m": [0.05, 0.03], "max_m": [0.12, 0.04]},
+      {"kind": "rectangle", "name": "R5", "min_m": [0.09, 0.04], "max_m": [0.12, 0.05]},
+      {"kind": "rectangle", "name": "R6", "min_m": [0.11, 0.05], "max_m": [0.12, 0.06]},
+      {"kind": "rectangle", "name": "T1", "min_m": [-0.04, 0.10], "max_m": [0.12, 0.12]}
+    ]
+  },
+  "solver": {"method": "SLSQP", "max_iterations": 300, "objective_tolerance": 1e-13,
+             "bend_limit_tolerance_rad": 1e-9},
+  "sampling": {"max_arc_spacing_m": 0.002},
+  "ik_search": {
+    "max_attempts": 64,
+    "random_seed": 7,
+    "max_seed_draws": 1024,
+    "seed_distance_tolerance_rad": 0.001,
+    "candidate_distance_tolerance_rad": 0.0001,
+    "reference_configuration_rad": null
+  },
+  "visualization": {
+    "figure_size_inches": [8, 8],
+    "section_colors": ["#444444", "#888888", "#555555"],
+    "target_color": "#159947", "obstacle_color": "#7fa9c7", "obstacle_alpha": 0.45,
+    "body_alpha": 0.3, "centerline_width": 2.5, "base_axis_length_m": 0.015
+  }
+}

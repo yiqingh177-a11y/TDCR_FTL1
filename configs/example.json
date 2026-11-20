@@ -1,0 +1,37 @@
+{
+  "description": "Illustrative three-section robot. These are NOT verified COBRA dimensions.",
+  "robot": {
+    "sections": [
+      {"length_m": 0.08, "radius_m": 0.004, "max_bend_rad": 1.5707963267948966},
+      {"length_m": 0.06, "radius_m": 0.004, "max_bend_rad": 1.5707963267948966},
+      {"length_m": 0.04, "radius_m": 0.004, "max_bend_rad": 1.5707963267948966}
+    ],
+    "base_position_m": [0, 0, 0.03],
+    "base_rpy_rad": [0, 0, 0],
+    "initial_configuration_rad": [[0, 0], [0, 0], [0, 0]]
+  },
+  "target": {"position_m": [0.05, 0.05, 0.16], "tolerance_m": 0.001},
+  "environment": {
+    "workspace_bounds_m": [[-0.22, 0.25], [-0.22, 0.22], [0, 0.43]],
+    "safety_margin_m": 0.001,
+    "obstacles": [
+      {"kind": "box", "name": "side_wall", "center_m": [0.15, -0.09, 0.21],
+       "size_m": [0.04, 0.05, 0.16]},
+      {"kind": "sphere", "name": "side_sphere", "center_m": [-0.08, 0.06, 0.24],
+       "radius_m": 0.025}
+    ]
+  },
+  "solver": {"max_iterations": 300, "objective_tolerance": 1e-13,
+             "bend_limit_tolerance_rad": 1e-9},
+  "sampling": {"max_arc_spacing_m": 0.003},
+  "visualization": {
+    "figure_size_inches": [10, 8], "elevation_deg": 24, "azimuth_deg": -55,
+    "section_colors": ["#555555", "#888888", "#444444"],
+    "target_color": "#159947", "obstacle_color": "#7fa9c7",
+    "obstacle_alpha": 0.35, "centerline_width": 3,
+    "base_axis_length_m": 0.025, "surface_samples": 20
+  }
+}
+
+
+
