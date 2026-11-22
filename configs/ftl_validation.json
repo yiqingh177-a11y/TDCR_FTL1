@@ -1,0 +1,6 @@
+{
+  "description": "Obstacle-free numerical reference fixtures; C/B/A signed radians, original physical dimensions.",
+  "straight": [0.0, 0.0, 0.0],
+  "single-bend": [0.6, 0.0, 0.0],
+  "s-bend": [0.9, -1.3, 0.8]
+}

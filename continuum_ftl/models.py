@@ -10,6 +10,7 @@ measured from +Z towards +Y. Its robot and obstacle arrays remain genuinely 2D.
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -199,6 +200,47 @@ class DeploymentConfig:
 
 
 @dataclass(frozen=True)
+class FTLConfig:
+    """Stage 2C incremental planar SQP; distances m, angles rad, times seconds.
+
+    Error metrics use independent finer sampling, not the optimization grid.
+    Error thresholds are optional; geometry and solver checks always apply.
+    Limits are demonstrator settings, not identified hardware constants.
+    """
+
+    reference_step_m: float = 0.002
+    max_feed_increment_m: float = 0.002
+    max_bend_increment_rad: float = 0.064
+    optimization_body_spacing_m: float = 0.005
+    validation_body_spacing_m: float = 0.001
+    comparison_spacing_m: float = 0.00025
+    matching_window_m: float = 0.02
+    tip_tolerance_m: float = 0.0005
+    body_tolerance_m: float = 0.005
+    enforce_error_limits: bool = False
+    reference_progress_mode: Literal["actual_tip", "scheduled"] = "actual_tip"
+    minimum_progress_m: float = 1e-6
+    increment_tolerance: float = 1e-8
+    max_iterations: int = 150
+    solver_tolerance: float = 1e-7
+    # Dimensionless SLSQP controls. Match SciPy's sqrt(machine epsilon) default:
+    # a 1e-5 perturbation can exceed the residual near the tip-distance cusp.
+    finite_difference_step: float = float(np.sqrt(np.finfo(float).eps))
+    objective_scale_m: float = 0.001
+    tip_weight: float = 10.0
+    invalid_geometry_penalty_m: float = 1.0
+    max_steps: int = 250
+    summary_shape_count: int = 6
+    history_color: str = "#158c91"
+    body_reference_mode: Literal["tip_history", "previous_body"] = "tip_history"
+    # Signed axial increment: negative retracts the whole physical chain in -Z.
+    # Zero preserves legacy configurations that omit this optional field.
+    min_feed_increment_m: float = 0.0
+    max_reshape_attempts: int = 0
+    reshape_min_improvement_m: float = 0.00001
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     description: str
     robot: RobotConfig | PlanarRobotConfig
@@ -209,6 +251,7 @@ class ProjectConfig:
     visualization: VisualizationConfig | PlanarVisualizationConfig
     ik_search: IKSearchConfig | None = None
     deployment: DeploymentConfig | None = None
+    ftl: FTLConfig | None = None
 
     @property
     def dimension(self) -> int:
@@ -331,6 +374,121 @@ class ReferencePath:
     section_indices: NDArray[np.int64]
     section_boundary_arcs_m: FloatArray
     target_position_m: FloatArray
+    tip_error_m: float
+
+
+@dataclass(frozen=True)
+class PathMatch:
+    """Ordered local point-to-polyline matches; lengths m, world YZ points."""
+
+    distances_m: FloatArray
+    matched_points_m: FloatArray
+    matched_arcs_m: FloatArray
+
+
+@dataclass(frozen=True)
+class FTLTrial:
+    """Actual PCC trial and its exposed active-body correspondence; no passive samples."""
+
+    state: DeploymentState
+    exposure: EnvironmentExposure
+    tip_error_m: float
+    body_points_m: FloatArray
+    body_material_arcs_m: FloatArray
+    body_match: PathMatch | None
+    geometry_failure: str | None
+
+
+@dataclass(frozen=True)
+class FTLStep:
+    """One actual approach/FTL frame, including the first rejected trial.
+
+    Configuration vectors always use physical proximal-to-distal C/B/A order.
+    reference_progress_m is a local projection of the actual tip, not feed d.
+    comparison_path_m is the frozen selected body reference plus intended extension.
+    historical_tip_path_m contains accepted tips only, including this frame iff accepted.
+    """
+
+    step_index: int
+    phase: str
+    state: DeploymentState
+    exposure: EnvironmentExposure
+    feed_increment_m: float
+    configuration_increment_rad: FloatArray
+    optimized_section_indices: tuple[int, ...]
+    reference_progress_m: float
+    desired_reference_progress_m: float
+    desired_tip_position_m: FloatArray
+    tip_error_m: float
+    body_following_error_max_m: float | None
+    body_following_error_mean_m: float | None
+    planned_path_deviation_max_m: float | None
+    worst_body_point_m: FloatArray | None
+    worst_body_material_arc_m: float | None
+    solver_success: bool | None
+    solver_status: int | None
+    solver_message: str
+    solver_iterations: int
+    computation_time_s: float
+    accepted: bool
+    failure_reason: str | None
+    historical_tip_path_m: FloatArray
+    comparison_path_m: FloatArray
+    reference_progress_stalled: bool = False
+
+
+@dataclass(frozen=True)
+class FTLReshapeAttempt:
+    """Optional fixed-waypoint trial; only accepted trials enter physical replay.
+
+    Body improvement uses the same frozen comparison curve, distances in metres.
+    Rejected trial geometry/solver diagnostics are retained without executing it.
+    """
+
+    attempt_index: int
+    body_error_before_m: float
+    trial: FTLStep
+    outcome: str
+
+
+@dataclass(frozen=True)
+class FTLResult:
+    """Single-path outcome; success requires both sequence completion and target tolerance.
+
+    In display-only mode the reference sequence can complete with success=False
+    and failure_reason=None: the actual final tip simply missed the target.
+    """
+
+    success: bool
+    steps: tuple[FTLStep, ...]
+    failure_reason: str | None
+    computation_time_s: float
+    reference_completed: bool = False
+    error_limits_enforced: bool = True
+    reference_progress_mode: str = "actual_tip"
+    body_reference_mode: str = "tip_history"
+    effective_ftl_settings: FTLConfig | None = None
+    reshape_attempts: tuple[FTLReshapeAttempt, ...] = ()
+
+
+@dataclass(frozen=True)
+class FTLFrameEvaluation:
+    """Independent directed geometric deviations for an accepted FTL frame, metres.
+
+    Curve means average sampled points; rollout means average frame statistics.
+    Native body error uses the selected optimization reference and is separate.
+    """
+
+    step_index: int
+    reference_progress_m: float
+    desired_reference_progress_m: float
+    history_to_reference_max_m: float
+    history_to_reference_mean_m: float
+    body_to_history_max_m: float
+    body_to_history_mean_m: float
+    body_to_reference_max_m: float
+    body_to_reference_mean_m: float
+    native_body_error_max_m: float
     tip_error_m: float
 
 

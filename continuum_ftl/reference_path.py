@@ -22,7 +22,7 @@ from .planar_kinematics import forward_kinematics_2d
 def extract_reference_path(config: ProjectConfig, configuration_rad: FloatArray) -> ReferencePath:
     """Fixed active PCC path in original environment YZ, s in metres from entry.
 
-    Caller supplies a previously collision-validated final IK configuration.
+    Caller supplies one final IK configuration and chooses its collision policy.
     This function validates FK tip tolerance and entry geometry only; it does
     NOT optimize or check collisions. It preserves the exact FK tip, including
     any reported IK residual, rather than inserting an artificial target segment.
@@ -91,28 +91,43 @@ def interpolate_reference_path(path: ReferencePath, arc_lengths_m: FloatArray) -
     return points
 
 
-def load_reference_path(config: ProjectConfig, result_path: str | Path) -> ReferencePath:
-    """Read one Stage 1 report accepted as collision-free in the same scene.
+def load_reference_path(
+    config: ProjectConfig,
+    result_path: str | Path,
+    *,
+    require_collision_free: bool = True,
+) -> ReferencePath:
+    """Read one saved target-reaching shape, with optional collision provenance.
 
-    Reject stale/missing provenance and unsuccessful/colliding reports. Static
-    acceptance is inherited from Stage 1; Stage 2B never reruns its checker/solver.
-    Re-export old reports with the Stage 1 CLI to attach geometry_context.
+    Stage 2B's default requires the same scene and collision-free acceptance.
+    Pure FTL disables that requirement: match robot/target only and permit one
+    target-reaching rejected diagnostic shape. No IK/checker is run here.
     """
     data = json.loads(Path(result_path).read_text(encoding="utf-8-sig"))
-    if data.get("geometry_context") != geometry_context(config):
+    expected = geometry_context(config)
+    stored = data.get("geometry_context")
+    if require_collision_free and stored != expected:
         raise ValueError(
             "Stage 1 report is stale or lacks geometry_context; re-export for this scene"
         )
+    if not require_collision_free and (
+        not isinstance(stored, dict)
+        or any(stored.get(key) != expected[key] for key in ("dimension", "robot", "target"))
+    ):
+        raise ValueError("Stage 1 robot/target provenance is stale or missing; re-export the shape")
     if "success" in data:
-        if data["success"] is not True:
+        if require_collision_free and data["success"] is not True:
             raise ValueError("Stage 1 search report did not succeed")
         accepted = data.get("accepted_final_configuration")
+        if accepted is None and not require_collision_free:
+            accepted = data.get("diagnostic_rejected_configuration")
     else:
         accepted = data
-    if not isinstance(accepted, dict) or not (
+    if not isinstance(accepted, dict) or accepted.get("target_reached") is not True:
+        raise ValueError("One saved target-reaching Stage 1 shape is required")
+    if require_collision_free and not (
         accepted.get("static_target_feasible") is True
         and accepted.get("collision_free_with_margin") is True
-        and accepted.get("target_reached") is True
         and accepted.get("collision_status") == "clear"
     ):
         raise ValueError("A collision-free, target-reaching Stage 1 final result is required")

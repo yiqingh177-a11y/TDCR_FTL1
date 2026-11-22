@@ -147,7 +147,16 @@ class ReferencePathTests(unittest.TestCase):
 
 class EnvironmentExposureTests(unittest.TestCase):
     def setUp(self):
-        self.config = load_config(CONFIG)
+        loaded = load_config(CONFIG)
+        # Exact intersection expectations below use the original 5 cm feed gap.
+        self.config = replace(
+            loaded,
+            deployment=replace(
+                loaded.deployment,
+                feed_exit_m=np.array([0.0, -0.05]),
+                feed_block_center_m=np.array([0.0, -0.105]),
+            ),
+        )
 
     def state(self, distance, q=(0, 0, 0), spacing=0.002, robot=None):
         return compute_deployment(

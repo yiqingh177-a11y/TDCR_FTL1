@@ -4,6 +4,7 @@ import copy
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from math import fsum
 from pathlib import Path
 from unittest.mock import patch
@@ -26,7 +27,16 @@ EXAMPLE = ROOT / "configs/robot_2d.json"
 
 class DeploymentGeometryTests(unittest.TestCase):
     def setUp(self):
-        self.config = load_config(EXAMPLE)
+        loaded = load_config(EXAMPLE)
+        # Retain the original numerical fixture while the demo feed is movable.
+        self.config = replace(
+            loaded,
+            deployment=replace(
+                loaded.deployment,
+                feed_exit_m=np.array([0.0, -0.05]),
+                feed_block_center_m=np.array([0.0, -0.105]),
+            ),
+        )
         self.robot = self.config.robot
         self.settings = self.config.deployment
 

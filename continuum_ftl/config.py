@@ -14,6 +14,7 @@ from .models import (
     DeploymentConfig,
     EnvironmentConfig,
     FloatArray,
+    FTLConfig,
     IKSearchConfig,
     PlanarRobotConfig,
     PlanarVisualizationConfig,
@@ -82,6 +83,7 @@ def _parse_config(data: dict) -> ProjectConfig:
     dimension = data.pop("dimension", 3)
     raw_search = data.pop("ik_search", None)
     raw_deployment = data.pop("deployment", None)
+    raw_ftl = data.pop("ftl", None)
     if type(dimension) is not int or dimension not in (2, 3):
         raise ValueError("dimension must be 2 or 3; omitted means legacy 3D")
     if set(data) != {
@@ -116,6 +118,9 @@ def _parse_config(data: dict) -> ProjectConfig:
     deployment = (
         _parse_deployment(raw_deployment, robot, dimension) if raw_deployment is not None else None
     )
+    ftl = _parse_ftl(raw_ftl, dimension) if raw_ftl is not None else None
+    if ftl is not None and deployment is None:
+        raise ValueError("FTL requires Stage 2A deployment settings")
     if not isinstance(data["description"], str):
         raise ValueError("description must be a string")
     return ProjectConfig(
@@ -128,7 +133,56 @@ def _parse_config(data: dict) -> ProjectConfig:
         visualization,
         search,
         deployment,
+        ftl,
     )
+
+
+def _parse_ftl(data: dict, dimension: int) -> FTLConfig:
+    if dimension != 2:
+        raise ValueError("Stage 2C FTL supports 2D only")
+    settings = FTLConfig(**data)
+    if type(settings.enforce_error_limits) is not bool:
+        raise ValueError("ftl.enforce_error_limits must be a boolean")
+    if settings.reference_progress_mode not in ("actual_tip", "scheduled"):
+        raise ValueError("ftl.reference_progress_mode must be actual_tip or scheduled")
+    if settings.body_reference_mode not in ("tip_history", "previous_body"):
+        raise ValueError("ftl.body_reference_mode must be tip_history or previous_body")
+    if (
+        isinstance(settings.min_feed_increment_m, bool)
+        or not np.isfinite(settings.min_feed_increment_m)
+        or settings.min_feed_increment_m > 0
+    ):
+        raise ValueError("ftl.min_feed_increment_m must be finite and <= 0")
+    for name in (
+        "reference_step_m",
+        "max_feed_increment_m",
+        "max_bend_increment_rad",
+        "optimization_body_spacing_m",
+        "validation_body_spacing_m",
+        "comparison_spacing_m",
+        "matching_window_m",
+        "tip_tolerance_m",
+        "body_tolerance_m",
+        "minimum_progress_m",
+        "increment_tolerance",
+        "solver_tolerance",
+        "finite_difference_step",
+        "objective_scale_m",
+        "tip_weight",
+        "invalid_geometry_penalty_m",
+        "reshape_min_improvement_m",
+    ):
+        _positive(getattr(settings, name), f"ftl.{name}")
+    for name in ("max_iterations", "max_steps", "summary_shape_count"):
+        _integer(getattr(settings, name), f"ftl.{name}")
+    _integer(settings.max_reshape_attempts, "ftl.max_reshape_attempts", minimum=0)
+    if settings.validation_body_spacing_m > settings.optimization_body_spacing_m:
+        raise ValueError("FTL validation must use at least as fine a body grid as optimization")
+    if settings.comparison_spacing_m >= settings.optimization_body_spacing_m:
+        raise ValueError("FTL comparison path must be finer than the optimization body grid")
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", settings.history_color) is None:
+        raise ValueError("ftl.history_color must be #RRGGBB")
+    return settings
 
 
 def _parse_deployment(

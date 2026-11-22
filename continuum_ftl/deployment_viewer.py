@@ -12,6 +12,8 @@ from .models import (
     DeploymentState,
     EnvironmentExposure,
     ExposureStatus,
+    FTLConfig,
+    FTLStep,
     ProjectConfig,
     ReferencePath,
 )
@@ -30,6 +32,8 @@ class DeploymentViewer:
         *,
         reference_path: ReferencePath | None = None,
         exposures: tuple[EnvironmentExposure, ...] | None = None,
+        ftl_steps: tuple[FTLStep, ...] | None = None,
+        rollout_failure_reason: str | None = None,
     ) -> None:
         import matplotlib.pyplot as plt
         from matplotlib.patches import Circle, Rectangle
@@ -43,16 +47,22 @@ class DeploymentViewer:
             )
         if exposures is not None and len(exposures) != len(states):
             raise ValueError("Exactly one exposure result per actual deployment state required")
+        if ftl_steps is not None and (len(ftl_steps) != len(states) or exposures is None):
+            raise ValueError("One computed FTL step and exposure per frame required")
         self.config, self.states = config, states
         self.reference_path, self.exposures = reference_path, exposures
+        self.ftl_steps = ftl_steps
+        self.rollout_failure_reason = rollout_failure_reason
         self.settings = config.deployment
         self.animation = None
         self.paused = False
         self.current_index = 0
         self.fig = plt.figure(figsize=tuple(config.visualization.figure_size_inches))
-        self.axes = self.fig.add_axes([0.10, 0.18, 0.83, 0.62])
+        self.axes = self.fig.add_axes([0.10, 0.18, 0.83, 0.56 if ftl_steps is not None else 0.62])
         self.fig.suptitle(
-            "Stage 2B: deployment / exposure — NOT FTL"
+            "Stage 2C: computed incremental SQP FTL"
+            if ftl_steps is not None
+            else "Stage 2B: deployment / exposure — NOT FTL"
             if exposures is not None
             else "Stage 2A: manual feed-in / release demo — NOT FTL"
         )
@@ -62,13 +72,15 @@ class DeploymentViewer:
             "",
             va="top",
             family="monospace",
-            fontsize=9 if exposures is not None else 10,
+            fontsize=8 if ftl_steps is not None else 9 if exposures is not None else 10,
         )
         self.warning = self.fig.text(0.10, 0.13, "", color="#c62828", fontsize=8)
         self.fig.text(
             0.10,
             0.015,
-            "Obstacles/target: context only. Collision NOT checked. Passive may be clipped.",
+            "Obstacle collisions: OFF. Obstacles are visual only. Passive may be clipped."
+            if ftl_steps is not None
+            else "Obstacles/target: context only. Collision NOT checked. Passive may be clipped.",
             fontsize=8,
         )
         for obstacle in config.environment.obstacles:
@@ -88,7 +100,9 @@ class DeploymentViewer:
             *config.target.position_m,
             marker="*",
             color=config.visualization.target_color,
-            label="Stage 1 target\n(not tracked)"
+            label="Final target"
+            if ftl_steps is not None
+            else "Stage 1 target\n(not tracked)"
             if exposures is not None
             else "Stage 1 target (not tracked)",
         )
@@ -100,7 +114,9 @@ class DeploymentViewer:
                 "--",
                 color=settings.reference_path_color,
                 linewidth=config.visualization.centerline_width,
-                label="Fixed reference tip path\n(not followed)",
+                label="Fixed desired tip path"
+                if ftl_steps is not None
+                else "Fixed reference tip path\n(not followed)",
                 zorder=2,
             )
         self.feed_block = Rectangle(
@@ -151,6 +167,28 @@ class DeploymentViewer:
         (self.tip,) = self.axes.plot(
             [], [], "o", color="#c62828", markersize=6, label="Tip", zorder=6
         )
+        self.history_line, self.waypoint = None, None
+        if ftl_steps is not None:
+            from .models import FTLConfig
+
+            (self.history_line,) = self.axes.plot(
+                [],
+                [],
+                "--",
+                color=(config.ftl or FTLConfig()).history_color,
+                linewidth=config.visualization.centerline_width,
+                label="Accepted actual tip history",
+                zorder=5,
+            )
+            (self.waypoint,) = self.axes.plot(
+                [],
+                [],
+                "x",
+                color=config.visualization.target_color,
+                markersize=7,
+                label="Current desired waypoint",
+                zorder=7,
+            )
         active_points = np.vstack(
             [curve.points_m for state in states for curve in state.forward.section_curves[1:]]
         )
@@ -175,15 +213,30 @@ class DeploymentViewer:
             self.fig.legend(
                 *self.axes.get_legend_handles_labels(),
                 loc="upper left",
-                bbox_to_anchor=(0.005, 0.80),
+                bbox_to_anchor=(0.005, 0.74 if ftl_steps is not None else 0.80),
                 fontsize=7,
             )
         else:
             self.axes.legend(loc="upper left", fontsize=7)
-        self.replay_button = Button(self.fig.add_axes([0.25, 0.055, 0.2, 0.05]), "Replay")
-        self.pause_button = Button(self.fig.add_axes([0.55, 0.055, 0.2, 0.05]), "Pause")
+        self.replay_button = Button(
+            self.fig.add_axes(
+                [0.12, 0.055, 0.16, 0.05] if ftl_steps is not None else [0.25, 0.055, 0.2, 0.05]
+            ),
+            "Replay",
+        )
+        self.pause_button = Button(
+            self.fig.add_axes(
+                [0.32, 0.055, 0.16, 0.05] if ftl_steps is not None else [0.55, 0.055, 0.2, 0.05]
+            ),
+            "Pause",
+        )
         self.replay_button.on_clicked(self.replay)
         self.pause_button.on_clicked(self.toggle_pause)
+        if ftl_steps is not None:
+            self.previous_button = Button(self.fig.add_axes([0.52, 0.055, 0.16, 0.05]), "Previous")
+            self.next_button = Button(self.fig.add_axes([0.72, 0.055, 0.16, 0.05]), "Next")
+            self.previous_button.on_clicked(lambda event: self.step_frame(-1))
+            self.next_button.on_clicked(lambda event: self.step_frame(1))
         self.draw_frame(0)
 
     def draw_frame(self, index: int) -> tuple:
@@ -242,6 +295,45 @@ class DeploymentViewer:
             self.status.set_color(
                 "#c62828" if exposed.status == ExposureStatus.AMBIGUOUS else "#222222"
             )
+        if self.ftl_steps is not None:
+            import textwrap
+
+            step = self.ftl_steps[index]
+            self.history_line.set_data(*step.historical_tip_path_m.T)
+            self.waypoint.set_data(
+                [step.desired_tip_position_m[0]], [step.desired_tip_position_m[1]]
+            )
+            body = (
+                "N/A"
+                if step.body_following_error_max_m is None
+                else f"{step.body_following_error_max_m * 1000:.3f}"
+            )
+            solver = (
+                "not run"
+                if step.solver_status is None
+                else f"status {step.solver_status}, success={step.solver_success}"
+            )
+            error_mode = "ON" if self.config.ftl and self.config.ftl.enforce_error_limits else "OFF"
+            progress_mode = (
+                self.config.ftl.reference_progress_mode if self.config.ftl else "actual_tip"
+            )
+            text += (
+                f"\nPhase={step.phase} | {solver} | {'ACCEPTED' if step.accepted else 'FAILED'}"
+                f" | body reference={(self.config.ftl or FTLConfig()).body_reference_mode}"
+                f"\nTip error={step.tip_error_m * 1000:.3f} mm | max body error={body} mm"
+                f" | ref s={step.reference_progress_m * 1000:.1f} mm"
+                f" | error limits={error_mode}"
+                f"\nReference mode={progress_mode}"
+                f" | desired s={step.desired_reference_progress_m * 1000:.1f} mm"
+                f" | low actual progress={step.reference_progress_stalled}"
+            )
+            if not step.accepted:
+                warnings.extend(textwrap.wrap(step.failure_reason, width=95))
+                self.status.set_color("#c62828")
+            elif index == len(self.states) - 1 and self.rollout_failure_reason:
+                warnings.extend(
+                    textwrap.wrap("Rollout stopped: " + self.rollout_failure_reason, width=95)
+                )
         self.status.set_text(text)
         self.warning.set_text("\n".join(warnings))
         return (
@@ -257,7 +349,7 @@ class DeploymentViewer:
         """Create/retain a finite visible replay, using stored states only."""
         from matplotlib.animation import FuncAnimation
 
-        if self.animation is None:
+        if self.animation is None or self.animation.event_source is None:
             self.animation = FuncAnimation(
                 self.fig,
                 self.draw_frame,
@@ -268,6 +360,17 @@ class DeploymentViewer:
                 blit=False,
             )
         return self.animation
+
+    def step_frame(self, offset: int) -> None:
+        """Pause and inspect adjacent stored frames, including the rejected trial."""
+        if self.animation is not None and self.animation.event_source is not None:
+            self.animation.event_source.stop()
+        self.paused = True
+        self.pause_button.label.set_text("Resume")
+        self.draw_frame(max(0, min(len(self.states) - 1, self.current_index + offset)))
+        if self.animation is not None:
+            self.animation.frame_seq = iter(range(self.current_index + 1, len(self.states)))
+        self.fig.canvas.draw_idle()
 
     def replay(self, event: object = None) -> None:
         """Restart all stored deployment frames without recomputing geometry."""
