@@ -75,7 +75,7 @@ class DeploymentViewer:
             fontsize=8 if ftl_steps is not None else 9 if exposures is not None else 10,
         )
         self.warning = self.fig.text(0.10, 0.13, "", color="#c62828", fontsize=8)
-        self.fig.text(
+        self.context_note = self.fig.text(
             0.10,
             0.015,
             "Obstacle collisions: OFF. Obstacles are visual only. Passive may be clipped."
@@ -96,7 +96,7 @@ class DeploymentViewer:
             )
             self.axes.add_patch(patch)
             self.axes.text(*center, obstacle.name, fontsize=8)
-        self.axes.scatter(
+        self.target_marker = self.axes.scatter(
             *config.target.position_m,
             marker="*",
             color=config.visualization.target_color,

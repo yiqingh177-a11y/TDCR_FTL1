@@ -544,6 +544,38 @@ class CollisionResult:
 
 
 @dataclass(frozen=True)
+class FrameCollisionResult:
+    """One accepted saved state checked in full, independent of FTL exposure.
+
+    Indices are zero-based. replay_time_s is display time, not physical time.
+    Collision section IDs use Passive/C/B/A physical order.
+    """
+
+    frame_index: int
+    source_frame_index: int
+    source_step_index: int
+    phase: str
+    desired_reference_progress_m: float
+    replay_time_s: float
+    state: DeploymentState
+    collision: CollisionResult
+
+
+@dataclass(frozen=True)
+class CollisionTimeline:
+    """Stage 3A post-processing result; saved q/d never optimized or adjusted."""
+
+    frames: tuple[FrameCollisionResult, ...]
+    source_path: str
+    source_sha256: str
+    source_frame_count: int
+    excluded_rejected_frames: int
+    reference_points_m: FloatArray
+    target_position_m: FloatArray
+    computation_time_s: float
+
+
+@dataclass(frozen=True)
 class EvaluationResult:
     ik: IKResult
     forward: ForwardResult

@@ -82,13 +82,64 @@ def _validate_vectors(*vectors: FloatArray) -> None:
         raise ValueError("Geometry requires matching finite world (2,) or (3,) arrays")
 
 
+def segment_box_signed_distance(
+    start: FloatArray, end: FloatArray, center: FloatArray, size: FloatArray
+) -> float:
+    """Minimum box signed distance along a segment, metres; negative inside.
+
+    Outside, reuse the exact segment/box distance. Inside, the signed distance
+    is the maximum of the affine signed face distances. Its minimum occurs at
+    an endpoint or an intersection of two of those affine functions. This avoids
+    the zero-distance saturation of a solid-box unsigned distance.
+    """
+    _validate_vectors(start, end, center, size)
+    if np.any(size <= 0):
+        raise ValueError("Box/rectangle sizes must be positive")
+    low, high = center - size / 2, center + size / 2
+    direction = end - start
+    moving = direction != 0
+    # Slab intersection avoids mistaking tiny positive distance roundoff at a
+    # box-face crossing for a segment that never enters the box.
+    outside_stationary_axis = np.any((~moving) & ((start < low) | (start > high)))
+    fractions = np.array(
+        [
+            (low[moving] - start[moving]) / direction[moving],
+            (high[moving] - start[moving]) / direction[moving],
+        ]
+    )
+    entry = max(0.0, float(np.max(fractions.min(axis=0), initial=0.0)))
+    exit_ = min(1.0, float(np.min(fractions.max(axis=0), initial=1.0)))
+    if outside_stationary_axis or entry > exit_:
+        return segment_box_distance(start, end, center, size)
+    intercepts = np.r_[low - start, start - high]
+    slopes = np.r_[-direction, direction]
+    candidates = [0.0, 1.0]
+    for first in range(len(slopes)):
+        for second in range(first + 1, len(slopes)):
+            difference = slopes[first] - slopes[second]
+            if difference != 0:
+                fraction = (intercepts[second] - intercepts[first]) / difference
+                if 0 < fraction < 1:
+                    candidates.append(float(fraction))
+    faces = intercepts[:, None] + slopes[:, None] * candidates
+    return float(np.min(np.max(faces, axis=0)))
+
+
 def check_static_collision(
-    robot: RobotConfig | PlanarRobotConfig, forward: ForwardResult, environment: EnvironmentConfig
+    robot: RobotConfig | PlanarRobotConfig,
+    forward: ForwardResult,
+    environment: EnvironmentConfig,
+    *,
+    signed_clearance: bool = False,
 ) -> CollisionResult:
     """Check every section against all obstacles, including radius and safety margin.
 
     Contacts use zero-based section indices. No obstacles -> clear with clearance
     None. Equality at contact or the safety margin is conservatively rejected.
+    signed_clearance optionally measures negative box overlap beyond the tube
+    radius. It is a conservative local overlap-depth estimate, not a force or
+    the minimum translation needed to separate the entire robot. The default
+    retains the original Stage 1 unsigned-box metric and decision rules.
     """
     if not np.isfinite(environment.safety_margin_m) or environment.safety_margin_m < 0:
         raise ValueError("Safety margin must be finite and nonnegative")
@@ -102,6 +153,7 @@ def check_static_collision(
         raise ValueError("Obstacle types must match the robot dimension")
     minimum = float("inf")
     contacts = []
+    box_distance = segment_box_signed_distance if signed_clearance else segment_box_distance
     for index, (section, curve) in enumerate(
         zip(robot.sections, forward.section_curves, strict=True)
     ):
@@ -112,14 +164,22 @@ def check_static_collision(
                 if isinstance(obstacle, (SphereObstacle, CircleObstacle)):
                     gap = segment_point_distance(start, end, obstacle.center_m) - obstacle.radius_m
                 elif isinstance(obstacle, BoxObstacle):
-                    gap = segment_box_distance(start, end, obstacle.center_m, obstacle.size_m)
+                    gap = box_distance(start, end, obstacle.center_m, obstacle.size_m)
                 elif isinstance(obstacle, RectangleObstacle):
                     center = (obstacle.min_m + obstacle.max_m) / 2
                     size = obstacle.max_m - obstacle.min_m
-                    gap = segment_box_distance(start, end, center, size)
+                    gap = box_distance(start, end, center, size)
                 else:
                     raise TypeError(f"Unsupported obstacle type: {type(obstacle).__name__}")
                 clearance = min(clearance, gap - radius)
+            if signed_clearance:
+                roundoff = (
+                    64
+                    * np.finfo(float).eps
+                    * max(1.0, float(np.max(np.abs(curve.points_m))), radius)
+                )
+                if abs(clearance) <= roundoff:
+                    clearance = 0.0  # Treat machine-scale tangency roundoff as contact.
             minimum = min(minimum, clearance)
             if clearance <= environment.safety_margin_m:
                 contacts.append(CollisionContact(obstacle.name, index, clearance))

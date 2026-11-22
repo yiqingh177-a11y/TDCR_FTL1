@@ -4,6 +4,9 @@
 
 **平时修改参数，只改 [configs/robot_2d.json](configs/robot_2d.json)。**
 
+**Stage 3A：已有 FTL 轨迹的完整机器人静态碰撞后处理**，运行方式、结果与计数定义见
+[Stage 3A 指南](README_STAGE3A.md)。它不重新优化或修改原轨迹。
+
 - `continuum_ftl/config.py`：读取和校验配置的代码，不是日常填写参数的地方。
 - `outputs/*.json`：运行结果和日志，不是参数文件；修改它们不会改变下一次仿真。
 - `configs/ftl_validation.json`：只用于 `straight / single-bend / s-bend` 三个测试用例的参考弯曲角。
