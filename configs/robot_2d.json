@@ -57,7 +57,7 @@
   },
   "ftl": {
     "tip_weight": 10.0,
-    "body_reference_mode": "tip_history",
+    "body_reference_mode": "previous_body",
     "enforce_error_limits": false,
     "reference_progress_mode": "scheduled",
     "reference_step_m": 0.001,

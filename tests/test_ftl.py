@@ -676,7 +676,7 @@ class FTLReferenceProgressTests(unittest.TestCase):
 
 
 class FTLConfigTests(unittest.TestCase):
-    def test_invalid_settings_and_3d_ftl_are_rejected(self):
+    def test_invalid_settings_and_ftl_without_deployment_are_rejected(self):
         data = json.loads(CONFIG.read_text(encoding="utf-8"))
         invalid = {
             "reference_progress_mode": "unknown",
@@ -701,7 +701,7 @@ class FTLConfigTests(unittest.TestCase):
             bad = json.loads((ROOT / "configs/example.json").read_text(encoding="utf-8"))
             bad["ftl"] = data["ftl"]
             file.write_text(json.dumps(bad), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "2D only"):
+            with self.assertRaisesRegex(ValueError, "requires Stage 2A deployment"):
                 load_config(file)
 
 

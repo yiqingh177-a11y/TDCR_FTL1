@@ -3,11 +3,11 @@
 import numpy as np
 from scipy.optimize import brentq
 
-from .models import FloatArray, PlanarCurveGeometry
+from .models import FloatArray, PlanarCurveGeometry, SpatialCurveGeometry
 from .planar_kinematics import planar_rotation, section_points_2d
 
 
-def material_boundaries(geometry: PlanarCurveGeometry) -> FloatArray:
+def material_boundaries(geometry: PlanarCurveGeometry | SpatialCurveGeometry) -> FloatArray:
     """Material junction coordinates (n+1,), m from the physical proximal end."""
     return np.r_[0.0, np.cumsum(geometry.section_lengths_m)]
 
@@ -44,7 +44,9 @@ def evaluate_curve(geometry: PlanarCurveGeometry, material_arcs_m: FloatArray) -
     return points
 
 
-def section_indices(geometry: PlanarCurveGeometry, arcs_m: FloatArray) -> np.ndarray:
+def section_indices(
+    geometry: PlanarCurveGeometry | SpatialCurveGeometry, arcs_m: FloatArray
+) -> np.ndarray:
     """Zero-based physical section IDs (M,); junction ownership is distal."""
     return np.clip(
         np.searchsorted(material_boundaries(geometry), arcs_m, side="right") - 1,
@@ -54,7 +56,10 @@ def section_indices(geometry: PlanarCurveGeometry, arcs_m: FloatArray) -> np.nda
 
 
 def sample_interval(
-    geometry: PlanarCurveGeometry, start_m: float, end_m: float, max_spacing_m: float
+    geometry: PlanarCurveGeometry | SpatialCurveGeometry,
+    start_m: float,
+    end_m: float,
+    max_spacing_m: float,
 ) -> FloatArray:
     """Material coordinates in [start,end], m; include exact endpoints and junctions.
 

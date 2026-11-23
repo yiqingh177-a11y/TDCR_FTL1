@@ -10,7 +10,15 @@ from .environment_exposure import exposure_report, extract_environment_exposure
 from .ftl_matching import comparison_path, previous_body_comparison_path
 from .ftl_optimizer import solve_ftl_step
 from .ftl_reshape import reshape_at_waypoint
-from .models import FTLConfig, FTLResult, FTLStep, PlanarRobotConfig, ProjectConfig, ReferencePath
+from .models import (
+    FTLConfig,
+    FTLResult,
+    FTLStep,
+    PlanarRobotConfig,
+    ProjectConfig,
+    ReferencePath,
+    SpatialDeploymentState,
+)
 from .reference_path import interpolate_reference_path, reference_path_report
 
 
@@ -261,6 +269,14 @@ def _step_report(step: FTLStep) -> dict:
         "deployment_distance_m": step.state.distance_m,
         "feed_increment_m": step.feed_increment_m,
         "configuration_rad": step.state.applied_bends_rad.tolist(),
+        **(
+            {
+                "configuration_parameterization": "local integrated bend_x, bend_y; radians",
+                "section_junction_transforms": step.state.geometry.junction_transforms.tolist(),
+            }
+            if isinstance(step.state, SpatialDeploymentState)
+            else {}
+        ),
         "configuration_increment_rad": step.configuration_increment_rad.tolist(),
         "optimized_section_indices": list(step.optimized_section_indices),
         "section_release_status": step.state.released.tolist(),

@@ -1,0 +1,26 @@
+{
+  "section_length_m": 0.1,
+  "reference_bends_rad": [
+    0.0,
+    0.7853981633974483,
+    -0.7853981633974483,
+    0.0
+  ],
+  "max_bend_rad": 1.5707963267948966,
+  "desired_path_step_m": 0.002,
+  "min_feed_increment_m": 0.0,
+  "max_feed_increment_m": 0.002,
+  "max_bend_increment_rad": 0.064,
+  "tip_weight": 10.0,
+  "optimization_spacing_m": 0.02,
+  "comparison_spacing_m": 0.001,
+  "validation_spacing_m": 0.00025,
+  "matching_window_m": 0.02,
+  "objective_scale_m": 0.001,
+  "max_iterations": 500,
+  "solver_tolerance": 1e-07,
+  "finite_difference_step": 1.4901161193847656e-08,
+  "acceptance_tolerance": 1e-08,
+  "geometry_tolerance_m": 1e-09,
+  "frame_interval_ms": 60
+}

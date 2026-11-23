@@ -17,6 +17,7 @@ from .models import (
     ProjectConfig,
     ReferencePath,
 )
+from .sweep_visualization import CentrelineSweep
 
 if TYPE_CHECKING:
     from matplotlib.animation import FuncAnimation
@@ -59,6 +60,16 @@ class DeploymentViewer:
         self.current_index = 0
         self.fig = plt.figure(figsize=tuple(config.visualization.figure_size_inches))
         self.axes = self.fig.add_axes([0.10, 0.18, 0.83, 0.56 if ftl_steps is not None else 0.62])
+        self.sweep = (
+            CentrelineSweep(
+                self.axes,
+                tuple(e.centerline_m for e in exposures),
+                tuple(s.accepted for s in ftl_steps),
+                dimension=2,
+            )
+            if ftl_steps is not None
+            else None
+        )
         self.fig.suptitle(
             "Stage 2C: computed incremental SQP FTL"
             if ftl_steps is not None
@@ -243,6 +254,8 @@ class DeploymentViewer:
         """Render exactly one stored state; index order is the deployment order."""
         state = self.states[index]
         self.current_index = index
+        if self.sweep is not None:
+            self.sweep.draw_frame(index)
         for line, curve in zip(self.lines, state.forward.section_curves, strict=True):
             line.set_data(curve.points_m[:, 0], curve.points_m[:, 1])
         self.boundaries.set_data(*state.forward.section_endpoints_m.T)

@@ -24,6 +24,7 @@ from .models import (
     SamplingConfig,
     SectionConfig,
     SolverConfig,
+    SpatialReferenceConfig,
     SphereObstacle,
     TargetConfig,
     VisualizationConfig,
@@ -84,6 +85,7 @@ def _parse_config(data: dict) -> ProjectConfig:
     raw_search = data.pop("ik_search", None)
     raw_deployment = data.pop("deployment", None)
     raw_ftl = data.pop("ftl", None)
+    raw_spatial = data.pop("spatial_reference", None)
     if type(dimension) is not int or dimension not in (2, 3):
         raise ValueError("dimension must be 2 or 3; omitted means legacy 3D")
     if set(data) != {
@@ -99,7 +101,14 @@ def _parse_config(data: dict) -> ProjectConfig:
             "Expected description, robot, target, environment, solver, sampling, visualization"
         )
     robot = _parse_robot(data["robot"], dimension)
+    spatial = _parse_spatial_reference(raw_spatial, robot) if raw_spatial is not None else None
     raw_target = dict(data["target"])
+    if spatial is not None:
+        if "position_m" in raw_target:
+            raise ValueError("Define the 3D FTL target only in spatial_reference.target_yz_m")
+        angle = np.deg2rad(spatial.plane_rotation_deg)
+        y, z = spatial.target_yz_m
+        raw_target["position_m"] = [-np.sin(angle) * y, np.cos(angle) * y, z]
     raw_target["position_m"] = _array(raw_target["position_m"], (dimension,), "target.position_m")
     target = TargetConfig(**raw_target)
     _positive(target.tolerance_m, "target.tolerance_m")
@@ -134,13 +143,53 @@ def _parse_config(data: dict) -> ProjectConfig:
         search,
         deployment,
         ftl,
+        spatial,
     )
 
 
+def _parse_spatial_reference(
+    data: dict, robot: RobotConfig | PlanarRobotConfig
+) -> SpatialReferenceConfig:
+    if not isinstance(robot, RobotConfig):
+        raise ValueError("spatial_reference requires a 3D robot")
+    data = dict(data)
+    data["target_yz_m"] = _array(data["target_yz_m"], (2,), "spatial_reference.target_yz_m")
+    cases = data["case_bends_rad"]
+    if not isinstance(cases, dict) or not cases:
+        raise ValueError("spatial_reference.case_bends_rad must be a nonempty object")
+    data["case_bends_rad"] = {
+        name: _array(q, (robot.section_count,), f"spatial_reference.case_bends_rad.{name}")
+        for name, q in cases.items()
+    }
+    spatial_cases = data.get("case_bends_xy_rad", {})
+    if not isinstance(spatial_cases, dict):
+        raise ValueError("spatial_reference.case_bends_xy_rad must be an object")
+    if cases.keys() & spatial_cases.keys():
+        raise ValueError("Planar and spatial reference case names must be distinct")
+    data["case_bends_xy_rad"] = {
+        name: _array(bends, (robot.section_count, 2), f"spatial_reference.case_bends_xy_rad.{name}")
+        for name, bends in spatial_cases.items()
+    }
+    settings = SpatialReferenceConfig(**data)
+    if isinstance(settings.plane_rotation_deg, bool) or not np.isfinite(
+        settings.plane_rotation_deg
+    ):
+        raise ValueError("Finite spatial reference plane rotation required")
+    for name, bends in settings.case_bends_rad.items():
+        if not name.strip() or np.any(np.abs(bends) > [s.max_bend_rad for s in robot.sections]):
+            raise ValueError("Spatial reference case names/bending limits are invalid")
+    for name, bends in settings.case_bends_xy_rad.items():
+        if not name.strip() or np.any(
+            np.linalg.norm(bends, axis=1) > [s.max_bend_rad for s in robot.sections]
+        ):
+            raise ValueError("Spatial reference case names/bending limits are invalid")
+    return settings
+
+
 def _parse_ftl(data: dict, dimension: int) -> FTLConfig:
-    if dimension != 2:
-        raise ValueError("Stage 2C FTL supports 2D only")
     settings = FTLConfig(**data)
+    if dimension == 3 and settings.max_reshape_attempts != 0:
+        raise ValueError("Optional fixed-waypoint reshaping is currently 2D only")
     if type(settings.enforce_error_limits) is not bool:
         raise ValueError("ftl.enforce_error_limits must be a boolean")
     if settings.reference_progress_mode not in ("actual_tip", "scheduled"):
@@ -188,13 +237,16 @@ def _parse_ftl(data: dict, dimension: int) -> FTLConfig:
 def _parse_deployment(
     data: dict, robot: RobotConfig | PlanarRobotConfig, dimension: int
 ) -> DeploymentConfig:
-    if dimension != 2:
-        raise ValueError("Stage 2A deployment supports 2D only")
     data = dict(data)
     for name in ("feed_exit_m", "feed_block_center_m", "feed_block_size_m"):
-        data[name] = _array(data[name], (2,), f"deployment.{name}")
+        data[name] = _array(data[name], (dimension,), f"deployment.{name}")
     for name in ("bend_targets_rad", "bend_ramp_distances_m"):
-        data[name] = _array(data[name], (robot.section_count,), f"deployment.{name}")
+        shape = (
+            (robot.section_count, 2)
+            if dimension == 3 and name == "bend_targets_rad"
+            else (robot.section_count,)
+        )
+        data[name] = _array(data[name], shape, f"deployment.{name}")
     data["active_section_names"] = tuple(data["active_section_names"])
     data["section_colors"] = tuple(data["section_colors"])
     settings = DeploymentConfig(**data)
@@ -219,22 +271,28 @@ def _parse_deployment(
         raise ValueError("Unique deployment names must match active section count")
     if np.any(settings.feed_block_size_m <= 0) or np.any(settings.bend_ramp_distances_m <= 0):
         raise ValueError("Positive feed block sizes and bending ramp distances required")
-    if np.any(np.abs(settings.bend_targets_rad) > [s.max_bend_rad for s in robot.sections]):
+    target_angles = (
+        np.abs(settings.bend_targets_rad)
+        if dimension == 2
+        else np.linalg.norm(settings.bend_targets_rad, axis=1)
+    )
+    if np.any(target_angles > [s.max_bend_rad for s in robot.sections]):
         raise ValueError("Manual bend targets exceed active section limits")
     total = fsum([settings.passive_length_m, *(s.length_m for s in robot.sections)])
     if settings.end_distance_m > total:
         raise ValueError("Deployment end distance exceeds complete physical length")
     if (
         not np.isfinite(settings.environment_entry_z_m)
-        or settings.environment_entry_z_m <= settings.feed_exit_m[1]
+        or settings.environment_entry_z_m <= settings.feed_exit_m[-1]
     ):
         raise ValueError("Environment entry must be above the fixed feed exit")
-    top_center = settings.feed_block_center_m + [0, settings.feed_block_size_m[1] / 2]
+    top_center = settings.feed_block_center_m.copy()
+    top_center[-1] += settings.feed_block_size_m[-1] / 2
     if not np.allclose(
         top_center, settings.feed_exit_m, rtol=0, atol=settings.geometry_tolerance_m
     ):
         raise ValueError("Feed exit must coincide with feed block upper centre")
-    if settings.feed_block_size_m[0] / 2 < max(
+    if np.min(settings.feed_block_size_m[:-1]) / 2 < max(
         settings.passive_radius_m, *(s.radius_m for s in robot.sections)
     ):
         raise ValueError("Feed block is narrower than the robot's diameter")

@@ -2,7 +2,22 @@
 
 **输出目录看不清时，先读 [outputs 导航指南](outputs/README.md)。**
 
-**平时修改参数，只改 [configs/robot_2d.json](configs/robot_2d.json)。**
+**二维参数修改 [configs/robot_2d.json](configs/robot_2d.json)；独立三维版本修改
+[configs/robot_3d.json](configs/robot_3d.json)。**
+
+三维 Stage 2A–2C：`.venv\Scripts\python.exe -m continuum_ftl.ftl_demo_3d`。
+运行、参数和方法见 [三维版本指南](README_3D.md)；现有二维入口继续保留。
+
+二维和三维 FTL 窗口、汇总图现在均显示红色身体运动扫掠区域，随播放进度累积；
+Replay 从头重画。三维使用半透明红色面，只统计已接受状态中进入环境的身体中心线。
+该图是离散帧间的显示近似，不含机器人半径，也不替代碰撞检查。
+
+已有结果无需重新求解即可生成红色图（在结果旁保存为 `red_sweep.png`）：
+
+```cmd
+.venv\Scripts\python.exe -m continuum_ftl.sweep_visualization outputs/runs/staircase_03/result.json
+.venv\Scripts\python.exe -m continuum_ftl.sweep_visualization outputs/spatial_s_bend_2026-11-23/result.json
+```
 
 **Stage 3A：已有 FTL 轨迹的完整机器人静态碰撞后处理**，运行方式、结果与计数定义见
 [Stage 3A 指南](README_STAGE3A.md)。它不重新优化或修改原轨迹。

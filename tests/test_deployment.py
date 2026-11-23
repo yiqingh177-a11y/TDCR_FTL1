@@ -233,7 +233,7 @@ class DeploymentConfigTests(unittest.TestCase):
             spatial = json.loads((ROOT / "configs/example.json").read_text(encoding="utf-8"))
             spatial["deployment"] = original["deployment"]
             path.write_text(json.dumps(spatial), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "2D only"):
+            with self.assertRaisesRegex(ValueError, r"shape \(3,\)"):
                 load_config(path)
 
 

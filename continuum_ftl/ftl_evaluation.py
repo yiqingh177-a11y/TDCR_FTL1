@@ -4,23 +4,31 @@ import numpy as np
 
 from .environment_exposure import extract_environment_exposure
 from .ftl_matching import comparison_path
-from .models import FloatArray, FTLFrameEvaluation, FTLResult, ProjectConfig, ReferencePath
+from .models import (
+    FloatArray,
+    FTLFrameEvaluation,
+    FTLResult,
+    ProjectConfig,
+    ReferencePath,
+    SpatialDeploymentState,
+)
 from .reference_path import interpolate_reference_path
+from .spatial_geometry import extract_spatial_exposure
 
 
 def point_to_polyline_distances(points_m: FloatArray, path_m: FloatArray) -> FloatArray:
-    """Unrestricted nearest-segment Euclidean distances (M,), world YZ metres.
+    """Unrestricted nearest-segment Euclidean distances (M,), YZ/XYZ metres.
 
-    Both inputs have shape (M,2)/(K,2). A single-point or all-repeated path is
+    Both inputs have shape (M,d)/(K,d), d=2 or 3. A point or all-repeated path is
     valid. No material IDs, matching windows or monotonicity assumptions enter
     this independent metric. Chunks bound working memory, not search accuracy.
     """
     points, path = np.asarray(points_m, dtype=float), np.asarray(path_m, dtype=float)
     if (
         points.ndim != 2
-        or points.shape[1] != 2
+        or points.shape[1] not in (2, 3)
         or path.ndim != 2
-        or path.shape[1] != 2
+        or path.shape[1] != points.shape[1]
         or not len(path)
         or not np.isfinite(points).all()
         or not np.isfinite(path).all()
@@ -68,12 +76,20 @@ def evaluate_ftl_rollout(
     for step in result.steps:
         if step.phase not in ("FTL", "reshape") or not step.accepted:
             continue
-        exposure = extract_environment_exposure(
-            step.state,
-            config.deployment.environment_entry_z_m,
-            max_arc_spacing_m=settings.validation_body_spacing_m,
-            tolerance_m=config.deployment.geometry_tolerance_m,
-        )
+        if isinstance(step.state, SpatialDeploymentState):
+            exposure = extract_spatial_exposure(
+                step.state.geometry,
+                config.deployment.environment_entry_z_m,
+                settings.validation_body_spacing_m,
+                config.deployment.geometry_tolerance_m,
+            )
+        else:
+            exposure = extract_environment_exposure(
+                step.state,
+                config.deployment.environment_entry_z_m,
+                max_arc_spacing_m=settings.validation_body_spacing_m,
+                tolerance_m=config.deployment.geometry_tolerance_m,
+            )
         body = exposure.centerline_m[exposure.section_indices > 0]
         if not len(body):
             raise ValueError("Accepted FTL frame has no exposed active body samples")

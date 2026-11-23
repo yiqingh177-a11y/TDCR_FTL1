@@ -8,7 +8,7 @@ PlanarRobotConfig instead uses signed q (n,), position (y,z), and a base angle
 measured from +Z towards +Y. Its robot and obstacle arrays remain genuinely 2D.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
@@ -241,6 +241,21 @@ class FTLConfig:
 
 
 @dataclass(frozen=True)
+class SpatialReferenceConfig:
+    """Planar signed bends or spatial local XY bends, rotated about world +Z.
+
+    Spatial case arrays have shape (section_count, 2), in radians. Their local
+    directions need not share a plane. Rotation is in degrees (right-hand rule).
+    This constrains the desired path only, not the robot's spatial optimization.
+    """
+
+    plane_rotation_deg: float
+    target_yz_m: FloatArray
+    case_bends_rad: dict[str, FloatArray]
+    case_bends_xy_rad: dict[str, FloatArray] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     description: str
     robot: RobotConfig | PlanarRobotConfig
@@ -252,6 +267,7 @@ class ProjectConfig:
     ik_search: IKSearchConfig | None = None
     deployment: DeploymentConfig | None = None
     ftl: FTLConfig | None = None
+    spatial_reference: SpatialReferenceConfig | None = None
 
     @property
     def dimension(self) -> int:
@@ -324,6 +340,38 @@ class PlanarCurveGeometry:
     junction_angles_rad: FloatArray
 
 
+@dataclass(frozen=True)
+class SpatialCurveGeometry:
+    """Full PCC curve: local integrated bends (n,2), world junction poses (n+1,4,4)."""
+
+    section_names: tuple[str, ...]
+    section_lengths_m: FloatArray
+    junction_transforms: FloatArray
+    bends_rad: FloatArray
+
+
+@dataclass(frozen=True)
+class SpatialDeploymentState:
+    """Spatial Passive/active physical chain; active bend arrays have shape (n,2).
+
+    bend_x/bend_y describe local bending directions, not rigid pitch/yaw joints.
+    No twist DOF. Geometry includes the complete straight passive section.
+    """
+
+    distance_m: float
+    proximal_position_m: FloatArray
+    active_base_position_m: FloatArray
+    requested_bends_rad: FloatArray
+    applied_bends_rad: FloatArray
+    released: NDArray[np.bool_]
+    release_thresholds_m: FloatArray
+    section_names: tuple[str, ...]
+    section_lengths_m: FloatArray
+    geometry: SpatialCurveGeometry
+    forward: ForwardResult
+    consistency_warnings: tuple[str, ...]
+
+
 class ExposureStatus(StrEnum):
     NOT_ENTERED = "not_entered"
     EXPOSED = "exposed"
@@ -334,7 +382,7 @@ class ExposureStatus(StrEnum):
 class EnvironmentExposure:
     """One continuous entry-to-tip domain, NOT a collision or FTL result.
 
-    points (M,2) and arc vectors (M,) are empty before entry or on ambiguity.
+    Points (M,2) in YZ or (M,3) in XYZ and arcs (M,) are empty before entry or on ambiguity.
     arc_lengths_m starts at entry; material_arc_lengths_m starts at the physical
     proximal end. Internal junction samples belong to the distal section.
     Unknown interval/lengths on ambiguity are None, never an invented zero.
@@ -367,7 +415,7 @@ class ReferencePath:
     The IK tip is retained exactly, rather than snapped to a target with residual.
     """
 
-    geometry: PlanarCurveGeometry
+    geometry: PlanarCurveGeometry | SpatialCurveGeometry
     entry_material_arc_m: float
     points_m: FloatArray
     arc_lengths_m: FloatArray
@@ -379,7 +427,7 @@ class ReferencePath:
 
 @dataclass(frozen=True)
 class PathMatch:
-    """Ordered local point-to-polyline matches; lengths m, world YZ points."""
+    """Ordered local point-to-polyline matches; lengths m, world YZ/XYZ points."""
 
     distances_m: FloatArray
     matched_points_m: FloatArray
@@ -390,7 +438,7 @@ class PathMatch:
 class FTLTrial:
     """Actual PCC trial and its exposed active-body correspondence; no passive samples."""
 
-    state: DeploymentState
+    state: DeploymentState | SpatialDeploymentState
     exposure: EnvironmentExposure
     tip_error_m: float
     body_points_m: FloatArray
@@ -411,7 +459,7 @@ class FTLStep:
 
     step_index: int
     phase: str
-    state: DeploymentState
+    state: DeploymentState | SpatialDeploymentState
     exposure: EnvironmentExposure
     feed_increment_m: float
     configuration_increment_rad: FloatArray

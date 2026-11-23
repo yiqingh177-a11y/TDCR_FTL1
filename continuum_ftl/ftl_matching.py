@@ -14,15 +14,15 @@ from .planar_geometry import evaluate_curve, sample_interval
 
 
 def polyline_arcs(points_m: FloatArray) -> FloatArray:
-    """Cumulative chord length (M,) m of a finite nonempty world YZ polyline."""
+    """Cumulative chord length (M,) m of a finite world YZ/XYZ polyline."""
     points = np.asarray(points_m, dtype=float)
     if (
         points.ndim != 2
-        or points.shape[1] != 2
+        or points.shape[1] not in (2, 3)
         or len(points) == 0
         or not np.isfinite(points).all()
     ):
-        raise ValueError("A finite nonempty (M,2) polyline is required")
+        raise ValueError("A finite nonempty (M,2) or (M,3) polyline is required")
     return np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
 
 
@@ -36,8 +36,8 @@ def comparison_path(
     """
     polyline_arcs(history_m)
     waypoint = np.asarray(next_waypoint_m, dtype=float)
-    if waypoint.shape != (2,) or not np.isfinite(waypoint).all():
-        raise ValueError("Next waypoint must be finite world YZ")
+    if waypoint.shape != (history_m.shape[1],) or not np.isfinite(waypoint).all():
+        raise ValueError("Next waypoint must be finite and match path dimension")
     if not np.isfinite(max_spacing_m) or max_spacing_m <= 0:
         raise ValueError("Positive finite comparison spacing required")
     points = np.vstack((history_m, waypoint))
@@ -98,12 +98,12 @@ def match_ordered_polyline(
     expected = np.asarray(expected_arcs_m, dtype=float)
     arcs = polyline_arcs(path_m)
     if (
-        points.shape != (len(expected), 2)
+        points.shape != (len(expected), path_m.shape[1])
         or expected.ndim != 1
         or not np.isfinite(points).all()
         or not np.isfinite(expected).all()
     ):
-        raise ValueError("Body points (M,2) and expected path arcs (M,) must be finite")
+        raise ValueError("Finite body points (M,d) and arcs (M,) must match path dimension d")
     if not np.isfinite(window_m) or window_m <= 0:
         raise ValueError("Positive finite local matching window required")
     distances, matched, progress = (

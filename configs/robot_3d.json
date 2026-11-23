@@ -1,0 +1,220 @@
+{
+  "dimension": 3,
+  "description": "Independent spatial Stage 2A-2C: original YZ reference rotated +45 deg about world Z; genuine spatial FTL; no external obstacles.",
+  "robot": {
+    "sections": [
+      {
+        "length_m": 0.08,
+        "radius_m": 0.004,
+        "max_bend_rad": 1.5707963267948966
+      },
+      {
+        "length_m": 0.06,
+        "radius_m": 0.004,
+        "max_bend_rad": 1.5707963267948966
+      },
+      {
+        "length_m": 0.04,
+        "radius_m": 0.004,
+        "max_bend_rad": 1.5707963267948966
+      }
+    ],
+    "base_position_m": [
+      0,
+      0,
+      0
+    ],
+    "initial_configuration_rad": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "base_rpy_rad": [
+      0,
+      0,
+      0
+    ]
+  },
+  "target": {
+    "tolerance_m": 0.001
+  },
+  "environment": {
+    "workspace_bounds_m": [
+      [
+        -0.22,
+        0.22
+      ],
+      [
+        -0.22,
+        0.22
+      ],
+      [
+        -0.46,
+        0.24
+      ]
+    ],
+    "safety_margin_m": 0.001,
+    "obstacles": []
+  },
+  "solver": {
+    "method": "SLSQP",
+    "max_iterations": 300,
+    "objective_tolerance": 1e-13,
+    "bend_limit_tolerance_rad": 1e-09
+  },
+  "sampling": {
+    "max_arc_spacing_m": 0.001
+  },
+  "deployment": {
+    "passive_length_m": 0.2,
+    "passive_radius_m": 0.004,
+    "active_section_names": [
+      "C",
+      "B",
+      "A"
+    ],
+    "feed_exit_m": [
+      0,
+      0,
+      -0.08
+    ],
+    "environment_entry_z_m": 0,
+    "feed_block_center_m": [
+      0,
+      0,
+      -0.135
+    ],
+    "feed_block_size_m": [
+      0.035,
+      0.035,
+      0.11
+    ],
+    "end_distance_m": 0.26,
+    "distance_step_m": 0.002,
+    "bend_targets_rad": [
+      [
+        -0.740480489693061,
+        0.740480489693061
+      ],
+      [
+        0.3702402448465305,
+        -0.3702402448465305
+      ],
+      [
+        -0.5553603672697958,
+        0.5553603672697958
+      ]
+    ],
+    "bend_ramp_distances_m": [
+      0.04,
+      0.04,
+      0.04
+    ],
+    "frame_interval_ms": 60,
+    "visible_passive_length_m": 0.07,
+    "section_colors": [
+      "#999999",
+      "#4c78a8",
+      "#f58518",
+      "#54a24b"
+    ],
+    "feed_color": "#b279a2",
+    "feed_opacity": 0.25,
+    "plot_padding_m": 0.015,
+    "geometry_tolerance_m": 1e-09
+  },
+  "ftl": {
+    "tip_weight": 10.0,
+    "body_reference_mode": "tip_history",
+    "enforce_error_limits": false,
+    "reference_progress_mode": "scheduled",
+    "reference_step_m": 0.001,
+    "min_feed_increment_m": -0.002,
+    "max_feed_increment_m": 0.002,
+    "max_bend_increment_rad": 0.128,
+    "optimization_body_spacing_m": 0.005,
+    "validation_body_spacing_m": 0.001,
+    "comparison_spacing_m": 0.00025,
+    "matching_window_m": 0.02,
+    "tip_tolerance_m": 0.0005,
+    "body_tolerance_m": 0.005,
+    "max_iterations": 500,
+    "solver_tolerance": 1e-07,
+    "finite_difference_step": 1.4901161193847656e-08,
+    "max_steps": 500,
+    "max_reshape_attempts": 0
+  },
+  "visualization": {
+    "figure_size_inches": [
+      11,
+      8
+    ],
+    "elevation_deg": 23,
+    "azimuth_deg": 25,
+    "section_colors": [
+      "#555555",
+      "#888888",
+      "#444444"
+    ],
+    "target_color": "#159947",
+    "obstacle_color": "#7fa9c7",
+    "obstacle_alpha": 0.35,
+    "centerline_width": 2.5,
+    "base_axis_length_m": 0.015,
+    "surface_samples": 20
+  },
+  "spatial_reference": {
+    "plane_rotation_deg": 45.0,
+    "target_yz_m": [
+      0.1409612134,
+      0.075
+    ],
+    "case_bends_rad": {
+      "straight": [
+        0,
+        0,
+        0
+      ],
+      "single-bend": [
+        0.6,
+        0,
+        0
+      ],
+      "s-bend": [
+        0.9,
+        -1.3,
+        0.8
+      ],
+      "staircase": [
+        1.3815237922166235,
+        -0.31931281183069027,
+        1.1386685884245238
+      ]
+    },
+    "case_bends_xy_rad": {
+      "s-bend-3d": [
+        [
+          0.0,
+          0.9
+        ],
+        [
+          0.9192388155425119,
+          -0.9192388155425119
+        ],
+        [
+          -0.273616114660535,
+          0.7517540966287268
+        ]
+      ]
+    }
+  }
+}

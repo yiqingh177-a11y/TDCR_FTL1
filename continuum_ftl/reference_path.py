@@ -14,9 +14,11 @@ from .models import (
     PlanarRobotConfig,
     ProjectConfig,
     ReferencePath,
+    SpatialCurveGeometry,
 )
 from .planar_geometry import evaluate_curve, material_boundaries
 from .planar_kinematics import forward_kinematics_2d
+from .spatial_geometry import evaluate_spatial_curve
 
 
 def extract_reference_path(config: ProjectConfig, configuration_rad: FloatArray) -> ReferencePath:
@@ -68,7 +70,7 @@ def extract_reference_path(config: ProjectConfig, configuration_rad: FloatArray)
 
 
 def interpolate_reference_path(path: ReferencePath, arc_lengths_m: FloatArray) -> FloatArray:
-    """Exact PCC interpolation (M,2) at reference s (M,) from entry to IK tip, m.
+    """Exact PCC interpolation (M,d), d=2 or 3, at reference s from entry to tip, m.
 
     No extrapolation, deployment-distance substitution or nearest-point matching.
     The stored sample spacing does not affect interpolated geometry.
@@ -85,7 +87,12 @@ def interpolate_reference_path(path: ReferencePath, arc_lengths_m: FloatArray) -
         path.entry_material_arc_m,
         material_boundaries(path.geometry)[-1],
     )
-    points = evaluate_curve(path.geometry, material)
+    evaluate = (
+        evaluate_spatial_curve
+        if isinstance(path.geometry, SpatialCurveGeometry)
+        else evaluate_curve
+    )
+    points = evaluate(path.geometry, material)
     points[arcs == 0] = path.points_m[0]
     points[arcs == path.arc_lengths_m[-1]] = path.points_m[-1]
     return points
@@ -137,8 +144,9 @@ def load_reference_path(
 def reference_path_report(path: ReferencePath) -> dict:
     """Serializable fixed reference including continuous PCC interpolation data."""
     geometry = path.geometry
+    spatial = isinstance(geometry, SpatialCurveGeometry)
     return {
-        "coordinate_frame": "Original Stage 1 world YZ, metres",
+        "coordinate_frame": "World XYZ, metres" if spatial else "Original Stage 1 world YZ, metres",
         "arc_origin": "Environment entry; increases along final active centreline to IK tip",
         "points_m": path.points_m.tolist(),
         "arc_lengths_m": path.arc_lengths_m.tolist(),
@@ -149,7 +157,16 @@ def reference_path_report(path: ReferencePath) -> dict:
         "entry_material_arc_m": path.entry_material_arc_m,
         "section_names": list(geometry.section_names),
         "section_lengths_m": geometry.section_lengths_m.tolist(),
-        "junction_positions_m": geometry.junction_positions_m.tolist(),
-        "junction_angles_rad": geometry.junction_angles_rad.tolist(),
+        **(
+            {
+                "junction_transforms": geometry.junction_transforms.tolist(),
+                "integrated_bends_rad": geometry.bends_rad.tolist(),
+            }
+            if spatial
+            else {
+                "junction_positions_m": geometry.junction_positions_m.tolist(),
+                "junction_angles_rad": geometry.junction_angles_rad.tolist(),
+            }
+        ),
         "interpolation": "Exact piecewise PCC by physical arc length; no transition-zone extension",
     }
